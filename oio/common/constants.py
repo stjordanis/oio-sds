@@ -40,6 +40,7 @@ READ_TIMEOUT = 30.0
 TIMEOUT_KEYS = ('connection_timeout', 'read_timeout', 'write_timeout')
 
 STRLEN_REFERENCEID = 66
+STRLEN_CID = 64
 STRLEN_CHUNKID = 64
 STRLEN_REQID = 63
 
@@ -161,6 +162,10 @@ M2_PROP_MISSING_CHUNKS = 'sys.m2.chunks.missing'
 M2_PROP_OBJECTS = 'sys.m2.objects'
 # Sets a limit on the total size of objects help by the container.
 M2_PROP_QUOTA = 'sys.m2.quota'
+# Shard info for the shard container.
+M2_PROP_SHARDING_SHARD_INFO = 'sys.m2.sharding.shard_info'
+# Shard ranges of the root container.
+M2_PROP_SHARDING_SHARD_RANGES = 'sharding.shard_ranges'
 # Name of the default storage policy for the container.
 M2_PROP_STORAGE_POLICY = 'sys.m2.policy.storage'
 # Total number of bytes of objects held by the container.
