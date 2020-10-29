@@ -159,6 +159,41 @@ shard_ranges_encode(shard_ranges_t shard_ranges)
 	return g_string_free(shard_ranges_json, FALSE);
 }
 
+static gint
+_shard_check_range(const gchar *lower, const gchar *upper, const gchar *path)
+{
+	EXTRA_ASSERT(lower != NULL);
+	EXTRA_ASSERT(upper != NULL);
+	EXTRA_ASSERT(path != NULL);
+
+	if (*lower && strncmp(path, lower, LIMIT_LENGTH_CONTENTPATH) <= 0) {
+		return -1;
+	}
+	if (*upper && strncmp(path, upper, LIMIT_LENGTH_CONTENTPATH) > 0) {
+		return 1;
+	}
+	// lower < path <= upper
+	return 0;
+}
+
+static gint
+_shard_range_cmp_with_path(gconstpointer a, gconstpointer b)
+{
+	const struct shard_range_s *shard_range = a;
+	const gchar *path = b;
+
+	return _shard_check_range(shard_range->lower, shard_range->upper, path);
+}
+
+struct shard_range_s *
+shard_ranges_get_shard_range(shard_ranges_t shards, const gchar *path)
+{
+	if (!shards)
+		return NULL;
+
+	return g_tree_search(shards, _shard_range_cmp_with_path, path);
+}
+
 void
 shard_ranges_free(shard_ranges_t shard_ranges)
 {

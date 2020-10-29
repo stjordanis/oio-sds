@@ -36,6 +36,9 @@ GError* shard_ranges_decode(const gchar *str, shard_ranges_t *pshard_ranges);
 
 gchar* shard_ranges_encode(shard_ranges_t shard_ranges);
 
+struct shard_range_s *shard_ranges_get_shard_range(
+		shard_ranges_t shard_ranges, const gchar *path);
+
 void shard_ranges_free(shard_ranges_t shard_ranges);
 
 #endif /*OIO_SDS__meta2v2__meta2_utils_sharding_h*/

@@ -479,6 +479,53 @@ m2b_open(struct meta2_backend_s *m2, struct oio_url_s *url,
 	return m2b_open_with_args(m2, url, &args, result);
 }
 
+static GError *
+_redirect_to_shard(struct sqlx_sqlite3_s *sq3, struct oio_url_s *url)
+{
+	GError *err = NULL;
+	gchar *shard_ranges_str = NULL;
+	shard_ranges_t shard_ranges = NULL;
+	const gchar *path = oio_url_get(url, OIOURL_PATH);
+
+	shard_ranges_str = sqlx_admin_get_str(sq3,
+			M2V2_ADMIN_SHARDING_SHARD_RANGES);
+	if (!shard_ranges_str) {
+		// No sharding
+		goto end;
+	}
+
+	// It's a root container, redirect to shard container
+	if (!path) {
+		err = BADREQ("Missing path");
+		goto fail;
+	}
+
+	err = shard_ranges_decode(shard_ranges_str, &shard_ranges);
+	if (err) {
+		goto fail;
+	}
+
+	struct shard_range_s *shard_range = shard_ranges_get_shard_range(
+			shard_ranges, path);
+	if (!shard_range) {
+		err = SYSERR("No shard found");
+		goto fail;
+	}
+
+	// Redirect to shard
+	err = NEWERROR(CODE_REDIRECT_SHARD, "%s", shard_range->cid);
+	goto end;
+
+fail:
+	g_prefix_error(&err, "Failed to redirect to shard: ");
+end:
+	if (err) {
+		m2b_close(sq3);
+	}
+	g_free(shard_ranges_str);
+	shard_ranges_free(shard_ranges);
+	return err;
+}
 
 static GError *
 m2b_open_if_needed(struct meta2_backend_s *m2, struct oio_url_s *url,
@@ -1037,6 +1084,9 @@ meta2_backend_get_alias(struct meta2_backend_s *m2b,
 
 	err = m2b_open(m2b, url, _mode_readonly(flags), &sq3);
 	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
+	if (!err) {
 		err = m2db_get_alias(sq3, url, flags, cb, u0);
 		m2b_close(sq3);
 	}
@@ -1089,6 +1139,9 @@ meta2_backend_drain_content(struct meta2_backend_s *m2,
 	struct sqlx_repctx_s *repctx = NULL;
 	err = m2b_open(m2, url, M2V2_OPEN_MASTERONLY | M2V2_OPEN_ENABLED, &sq3);
 	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
+	if (!err) {
 		EXTRA_ASSERT(sq3 != NULL);
 		if (!(err = sqlx_transaction_begin(sq3, &repctx))) {
 			err = m2db_drain_content(sq3, url, cb, u0);
@@ -1111,6 +1164,9 @@ meta2_backend_delete_alias(struct meta2_backend_s *m2b,
 	EXTRA_ASSERT(url != NULL);
 
 	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
+	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
 	if (!err) {
 		struct sqlx_repctx_s *repctx = NULL;
 		gint64 max_versions = _maxvers(sq3);
@@ -1171,6 +1227,9 @@ meta2_backend_put_alias(struct meta2_backend_s *m2b, struct oio_url_s *url,
 
 	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
 	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
+	if (!err) {
 		struct m2db_put_args_s args;
 		memset(&args, 0, sizeof(args));
 		args.sq3 = sq3;
@@ -1225,6 +1284,9 @@ meta2_backend_change_alias_policy(struct meta2_backend_s *m2b,
 
 	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
 	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
+	if (!err) {
 		struct m2db_put_args_s args;
 		memset(&args, 0, sizeof(args));
 		args.sq3 = sq3;
@@ -1276,6 +1338,9 @@ meta2_backend_update_content(struct meta2_backend_s *m2b, struct oio_url_s *url,
 
 	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
 	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
+	if (!err) {
 		GSList *deleted_objects = NULL;
 
 		if (!(err = _transaction_begin(sq3, url, &repctx))) {
@@ -1317,6 +1382,9 @@ meta2_backend_truncate_content(struct meta2_backend_s *m2b,
 		return NEWERROR(CODE_BAD_REQUEST, "Negative truncate size!");
 
 	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
+	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
 	if (!err) {
 		GSList *deleted_objects = NULL;
 
@@ -1360,6 +1428,9 @@ meta2_backend_force_alias(struct meta2_backend_s *m2b, struct oio_url_s *url,
 	EXTRA_ASSERT(cb_added != NULL);
 
 	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
+	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
 	if (!err) {
 		struct m2db_put_args_s args;
 		memset(&args, 0, sizeof(args));
@@ -1409,6 +1480,9 @@ meta2_backend_purge_alias(struct meta2_backend_s *m2, struct oio_url_s *url,
 
 	err = m2b_open(m2, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
 	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
+	if (!err) {
 		EXTRA_ASSERT(sq3 != NULL);
 		GSList *deleted_objects = NULL;
 
@@ -1457,6 +1531,9 @@ meta2_backend_insert_beans(struct meta2_backend_s *m2b,
 	if (frozen)
 		flags |= M2V2_OPEN_FROZEN;
 	err = m2b_open(m2b, url, flags, &sq3);
+	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
 	if (!err) {
 		if (!(err = _transaction_begin(sq3, url, &repctx))) {
 			if (force)
@@ -1532,6 +1609,9 @@ meta2_backend_delete_beans(struct meta2_backend_s *m2b,
 
 	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
 	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
+	if (!err) {
 		if (!(err = _transaction_begin(sq3, url, &repctx))) {
 			for (; !err && beans; beans = beans->next) {
 				if (unlikely(NULL == beans->data))
@@ -1572,6 +1652,9 @@ meta2_backend_update_beans(struct meta2_backend_s *m2b, struct oio_url_s *url,
 		flags |= M2V2_OPEN_FROZEN;
 	err = m2b_open(m2b, url, flags, &sq3);
 	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
+	if (!err) {
 		if (!(err = _transaction_begin(sq3, url, &repctx))) {
 			for (GSList *l0=old_chunks, *l1=new_chunks;
 					!err && l0 && l1 ; l0=l0->next,l1=l1->next)
@@ -1595,6 +1678,9 @@ meta2_backend_get_alias_version(struct meta2_backend_s *m2b,
 
 	struct sqlx_sqlite3_s *sq3 = NULL;
 	GError *err = m2b_open(m2b, url, _mode_readonly(0), &sq3);
+	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
 	if (!err) {
 		err = m2db_get_alias_version(sq3, url, version);
 		m2b_close(sq3);
@@ -1620,6 +1706,9 @@ meta2_backend_append_to_alias(struct meta2_backend_s *m2b,
 		return NEWERROR(CODE_INTERNAL_ERROR, "NS not ready");
 
 	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
+	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
 	if (!err) {
 		if (!(err = _transaction_begin(sq3, url, &repctx))) {
 			gboolean already_damaged = _is_damaged_object(m2b, sq3, url);
@@ -1650,6 +1739,9 @@ meta2_backend_get_properties(struct meta2_backend_s *m2b,
 	struct sqlx_sqlite3_s *sq3 = NULL;
 	GError *err = m2b_open(m2b, url, _mode_readonly(flags), &sq3);
 	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
+	if (!err) {
 		err = m2db_get_properties(sq3, url, cb, u0);
 		m2b_close(sq3);
 	}
@@ -1668,6 +1760,9 @@ meta2_backend_del_properties(struct meta2_backend_s *m2b,
 	EXTRA_ASSERT(url != NULL);
 
 	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
+	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
 	if (!err) {
 		if (!(err = _transaction_begin(sq3, url, &repctx))) {
 			if (!(err = m2db_del_properties(sq3, url, propv, out)))
@@ -1694,6 +1789,9 @@ meta2_backend_set_properties(struct meta2_backend_s *m2b, struct oio_url_s *url,
 	EXTRA_ASSERT(url != NULL);
 
 	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
+	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
 	if (!err) {
 		if (!(err = _transaction_begin(sq3, url, &repctx))) {
 			if (!(err = m2db_set_properties(sq3, url, flush, beans, out)))
@@ -2200,6 +2298,9 @@ meta2_backend_content_from_chunkid(struct meta2_backend_s *m2b,
 
 	err = m2b_open(m2b, url, _mode_readonly(0), &sq3);
 	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
+	if (!err) {
 		GVariant *params[2] = {NULL, NULL};
 		params[0] = g_variant_new_string(chunk_id);
 		err = CONTENTS_HEADERS_load (sq3->db, " id IN"
@@ -2228,6 +2329,9 @@ meta2_backend_content_from_contenthash (struct meta2_backend_s *m2b,
 
 	err = m2b_open(m2b, url, _mode_readonly(0), &sq3);
 	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
+	if (!err) {
 		GVariant *params[2] = {NULL, NULL};
 		params[0] = _gb_to_gvariant(h);
 		err = CONTENTS_HEADERS_load (sq3->db, " hash = ?", params, cb, u0);
@@ -2253,6 +2357,9 @@ meta2_backend_content_from_contentid (struct meta2_backend_s *m2b,
 	EXTRA_ASSERT(url != NULL);
 
 	err = m2b_open(m2b, url, _mode_readonly(0), &sq3);
+	if (!err) {
+		err = _redirect_to_shard(sq3, url);
+	}
 	if (!err) {
 		GVariant *params[2] = {NULL, NULL};
 		params[0] = _gb_to_gvariant(h);
