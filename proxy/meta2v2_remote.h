@@ -2,6 +2,7 @@
 OpenIO SDS meta2v2
 Copyright (C) 2014 Worldline, as part of Redcurrant
 Copyright (C) 2015-2019 OpenIO SAS, as part of OpenIO SDS
+Copyright (C) 2021 OVH SAS
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -204,5 +205,14 @@ GByteArray* m2v2_remote_pack_TOUCHB(
 GByteArray* m2v2_remote_pack_TOUCHC(
 		struct oio_url_s *url,
 		gint64 deadline);
+
+GByteArray* m2v2_remote_pack_REPLACE_SHARDING(
+		struct oio_url_s *url,
+		GByteArray *shards,
+		gint64 dl);
+
+GByteArray* m2v2_remote_pack_SHOW_SHARDING(
+		struct oio_url_s *url,
+		gint64 dl);
 
 #endif /*OIO_SDS__meta2v2__meta2v2_remote_h*/

@@ -2,6 +2,7 @@
 OpenIO SDS meta2v2
 Copyright (C) 2014 Worldline, as part of Redcurrant
 Copyright (C) 2015-2019 OpenIO SAS, as part of OpenIO SDS
+Copyright (C) 2021 OVH SAS
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -113,6 +114,8 @@ M2V2_DECLARE_FILTER(meta2_filter_action_touch_container);
 M2V2_DECLARE_FILTER(meta2_filter_action_insert_beans);
 M2V2_DECLARE_FILTER(meta2_filter_action_delete_beans);
 M2V2_DECLARE_FILTER(meta2_filter_action_update_beans);
+M2V2_DECLARE_FILTER(meta2_filter_action_replace_container_sharding);
+M2V2_DECLARE_FILTER(meta2_filter_action_show_container_sharding);
 
 M2V2_DECLARE_FILTER(meta2_filter_action_exit_election);
 

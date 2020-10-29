@@ -2,6 +2,7 @@
 OpenIO SDS proxy
 Copyright (C) 2014 Worldline, as part of Redcurrant
 Copyright (C) 2015-2020 OpenIO SAS, as part of OpenIO SDS
+Copyright (C) 2021 OVH SAS
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -2361,6 +2362,158 @@ enum http_rc_e action_container_raw_delete (struct req_args_s *args) {
 	return rest_action (args, action_m2_container_raw_delete);
 }
 
+
+/* SHARDING action resource ------------------------------------------------- */
+
+static gboolean
+_body_extract(gpointer ctx, MESSAGE reply)
+{
+	GString **gstr = ctx;
+	EXTRA_ASSERT(gstr != NULL);
+
+	gchar *out = NULL;
+	GError *err = metautils_message_extract_body_string(reply, &out);
+	if (err) {
+		GRID_DEBUG("Callback error: (%d) %s", err->code, err->message);
+		g_error_free(err);
+		return FALSE;
+	}
+	*gstr = g_string_new(out);
+	g_free(out);
+	return TRUE;
+}
+
+static enum http_rc_e
+action_m2_container_sharding_replace(struct req_args_s *args,
+		struct json_object *j UNUSED)
+{
+	GError *err = NULL;
+
+	PACKER_VOID(_pack) {
+		return m2v2_remote_pack_REPLACE_SHARDING(args->url, args->rq->body,
+				DL());
+	};
+	err = _resolve_meta2(args, _prefer_master(), _pack, NULL, NULL);
+
+	return _reply_m2_error(args, err);
+}
+
+static enum http_rc_e
+action_m2_container_sharding_show(struct req_args_s *args,
+		struct json_object *j UNUSED)
+{
+	GError *err = NULL;
+	GString *gstr = NULL;
+
+	PACKER_VOID(_pack) {
+		return m2v2_remote_pack_SHOW_SHARDING(args->url, DL());
+	};
+	err = _resolve_meta2(args, _prefer_slave(), _pack, &gstr, _body_extract);
+
+	if (err)
+		return _reply_common_error(args, err);
+	return _reply_success_json(args, gstr);
+}
+
+// SHARDING{{
+// POST /v3.0/{NS}/container/sharding/replace?acct={account}&ref={container}
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Replace shard ranges in root container.
+//
+// .. code-block:: text
+//
+//    [
+//      {
+//        "index": 0,
+//        "lower": "",
+//        "upper": "shard",
+//        "cid": "8B78B3245B74710F3ACC1BEF4978E621F5E764E01FFB5621D23C4EECA2B7BB3D"
+//      },
+//      {
+//        "index": 1,
+//        "lower": "shard",
+//        "upper": "",
+//        "cid": "BC99330D9F1A70D2AD6CA388DF8A09AD1DCD4066B439C945A157122CEC9800EA"
+//      }
+//    ]
+//
+//
+// .. code-block:: http
+//
+//    POST /v3.0/OPENIO/container/sharding/replace?acct=my_account&ref=mycontainer HTTP/1.1
+//    Host: 127.0.0.1:6000
+//    User-Agent: curl/7.58.0
+//    Accept: */*
+//    Content-Length: 225
+//    Content-Type: application/x-www-form-urlencoded
+//
+//
+// .. code-block:: http
+//
+//    HTTP/1.1 200 OK
+//    Connection: Close
+//    Content-Type: application/json
+//    Content-Length: 225
+//
+//    [
+//      {
+//        "index": 0,
+//        "lower": "",
+//        "upper": "shard",
+//        "cid": "8B78B3245B74710F3ACC1BEF4978E621F5E764E01FFB5621D23C4EECA2B7BB3D"
+//      },
+//      {
+//        "index": 1,
+//        "lower": "shard",
+//        "upper": "",
+//        "cid": "BC99330D9F1A70D2AD6CA388DF8A09AD1DCD4066B439C945A157122CEC9800EA"
+//      }
+//    ]
+//
+// }}SHARDING
+enum http_rc_e action_container_sharding_replace(struct req_args_s *args) {
+	return rest_action(args, action_m2_container_sharding_replace);
+}
+
+// SHARDING{{
+// GET /v3.0/{NS}/container/sharding/show?acct={account}&ref={container}
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Get shard ranges in root container.
+//
+// .. code-block:: http
+//
+//    POST /v3.0/OPENIO/container/sharding/show?acct=my_account&ref=mycontainer HTTP/1.1
+//    Host: 127.0.0.1:6000
+//    User-Agent: curl/7.58.0
+//    Accept: */*
+//
+//
+// .. code-block:: http
+//
+//    HTTP/1.1 200 OK
+//    Connection: Close
+//    Content-Type: application/json
+//    Content-Length: 225
+//
+//    [
+//      {
+//        "index": 0,
+//        "lower": "",
+//        "upper": "shard",
+//        "cid": "8B78B3245B74710F3ACC1BEF4978E621F5E764E01FFB5621D23C4EECA2B7BB3D"
+//      },
+//      {
+//        "index": 1,
+//        "lower": "shard",
+//        "upper": "",
+//        "cid": "BC99330D9F1A70D2AD6CA388DF8A09AD1DCD4066B439C945A157122CEC9800EA"
+//      }
+//    ]
+//
+// }}SHARDING
+enum http_rc_e action_container_sharding_show(struct req_args_s *args) {
+	return rest_action(args, action_m2_container_sharding_show);
+}
 
 /* CONTENT action resource -------------------------------------------------- */
 

@@ -2,6 +2,7 @@
 OpenIO SDS meta2v2
 Copyright (C) 2014 Worldline, as part of Redcurrant
 Copyright (C) 2015-2019 OpenIO SAS, as part of OpenIO SDS
+Copyright (C) 2021 OVH SAS
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -229,5 +230,16 @@ GError* meta2_backend_get_spare_chunks(struct meta2_backend_s *m2b,
 GError* meta2_backend_get_conditionned_spare_chunks_v2(
 		struct meta2_backend_s *m2b, struct oio_url_s *url, const gchar *stgpol,
 		GSList *notin, GSList *broken, GSList **result);
+
+/* Container Sharding ------------------------------------------------------- */
+
+/** Replace shard ranges in root container */
+GError* meta2_backend_replace_container_sharding(
+		struct meta2_backend_s *m2b, struct oio_url_s *url,
+		gchar *shard_ranges_str);
+
+/** Get shard ranges in root container */
+GError* meta2_backend_show_container_sharding(struct meta2_backend_s *m2b,
+		struct oio_url_s *url, gchar **out);
 
 #endif /*OIO_SDS__meta2v2__meta2_backend_h*/

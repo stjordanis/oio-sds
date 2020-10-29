@@ -2,6 +2,7 @@
 OpenIO SDS meta2v2
 Copyright (C) 2014 Worldline, as part of Redcurrant
 Copyright (C) 2015-2019 OpenIO SAS, as part of OpenIO SDS
+Copyright (C) 2021 OVH SAS
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -38,6 +39,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <meta2v2/autogen.h>
 #include <meta2v2/meta2_macros.h>
 #include <meta2v2/meta2_utils_lb.h>
+#include <meta2v2/meta2_utils_sharding.h>
 #include <meta2v2/meta2_backend_internals.h>
 
 #include <resolver/hc_resolver.h>
@@ -2258,6 +2260,85 @@ meta2_backend_content_from_contentid (struct meta2_backend_s *m2b,
 		metautils_gvariant_unrefv(params);
 		if (!err) {
 			/* TODO follow the FK to the aliases */
+		}
+		m2b_close(sq3);
+	}
+
+	return err;
+}
+
+/* Container Sharding ------------------------------------------------------- */
+
+GError*
+meta2_backend_replace_container_sharding(struct meta2_backend_s *m2b,
+		struct oio_url_s *url, gchar *shard_ranges_str)
+{
+	GError *err = NULL;
+	struct sqlx_sqlite3_s *sq3 = NULL;
+	shard_ranges_t shard_ranges = NULL;
+
+	EXTRA_ASSERT(m2b != NULL);
+	EXTRA_ASSERT(url != NULL);
+
+	err = shard_ranges_decode(shard_ranges_str, &shard_ranges);
+	if (err)
+		return err;
+	// TODO(adu): Check the shards
+	// Re-encode to always have the same format
+	gchar *shard_ranges_str_format = shard_ranges_encode(shard_ranges);
+	shard_ranges_free(shard_ranges);
+	if (!shard_ranges_str_format)
+		return SYSERR("Failed to re-encode shard ranges");
+
+	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
+	if (!err) {
+		struct sqlx_repctx_s *repctx = NULL;
+		if (!(err = _transaction_begin(sq3, url, &repctx))) {
+			if (sqlx_admin_has(sq3, M2V2_ADMIN_SHARDING_SHARD_INFO)) {
+				err = BADREQ("Container is a shard");
+			} else {
+				sqlx_admin_set_str(sq3, M2V2_ADMIN_SHARDING_SHARD_RANGES,
+						shard_ranges_str_format);
+				m2db_increment_version(sq3);
+			}
+			err = sqlx_transaction_end(repctx, err);
+			if (!err)
+				m2b_add_modified_container(m2b, sq3);
+		}
+		m2b_close(sq3);
+	} else {
+		g_free(shard_ranges_str_format);
+	}
+
+	return err;
+}
+
+GError*
+meta2_backend_show_container_sharding(struct meta2_backend_s *m2b,
+		struct oio_url_s *url, gchar **out)
+{
+	GError *err = NULL;
+	struct sqlx_sqlite3_s *sq3 = NULL;
+	gchar *shard_ranges_str = NULL;
+
+	EXTRA_ASSERT(m2b != NULL);
+	EXTRA_ASSERT(url != NULL);
+
+	err = m2b_open(m2b, url, _mode_readonly(0), &sq3);
+	if (!err) {
+		struct sqlx_repctx_s *repctx = NULL;
+		if (!(err = _transaction_begin(sq3, url, &repctx))) {
+			if (sqlx_admin_has(sq3, M2V2_ADMIN_SHARDING_SHARD_INFO)) {
+				err = BADREQ("Container is a shard");
+			} else {
+				shard_ranges_str = sqlx_admin_get_str(sq3, M2V2_ADMIN_SHARDING_SHARD_RANGES);
+				if (shard_ranges_str) {
+					*out = shard_ranges_str;
+				} else {
+					*out = g_strdup("[]");
+				}
+			}
+			err = sqlx_transaction_end(repctx, err);
 		}
 		m2b_close(sq3);
 	}

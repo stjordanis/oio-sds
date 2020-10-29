@@ -52,6 +52,7 @@ add_custom_command(
 add_library(meta2v2utils STATIC
 		${CMAKE_CURRENT_BINARY_DIR}/autogen_codec.c
 		${CMAKE_CURRENT_BINARY_DIR}/meta2_variables.c
+		meta2_utils_sharding.c
 		meta2_utils_lb.c
 		generic.c
 		meta2_bean.c

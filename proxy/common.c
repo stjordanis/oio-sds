@@ -1,6 +1,7 @@
 /*
 OpenIO SDS proxy
 Copyright (C) 2015-2019 OpenIO SAS, as part of OpenIO SDS
+Copyright (C) 2021 OVH SAS
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -695,7 +696,7 @@ GError * KV_read_usersys_properties (struct json_object *j, gchar ***out) {
 	}
 
 	for (gchar **p = user; *p && *(p + 1); p += 2)
-		oio_str_reuse(p, g_strconcat("user.", *p, NULL));
+		oio_str_reuse(p, g_strconcat(SQLX_ADMIN_PREFIX_USER, *p, NULL));
 	gchar **kv = (gchar **) oio_ext_array_concat((gpointer) user, (gpointer) sys);
 	g_free(user);
 	g_free(sys);
