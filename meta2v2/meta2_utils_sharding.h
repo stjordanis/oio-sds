@@ -41,4 +41,23 @@ struct shard_range_s *shard_ranges_get_shard_range(
 
 void shard_ranges_free(shard_ranges_t shard_ranges);
 
+struct shard_info_s {
+	gchar *root_cid;
+	gint64 timestamp;
+	gchar *lower;
+	gchar *upper;
+};
+
+gchar* shard_info_encode(struct shard_info_s *shard_info);
+
+GError* shard_info_decode_json(struct json_object *jshard_info,
+		struct shard_info_s **pshard_info);
+
+GError* shard_info_decode(const gchar *str, struct shard_info_s **pshard_info);
+
+GError* shard_info_check_range(struct shard_info_s *shard_info,
+		const gchar *path);
+
+void shard_info_free(struct shard_info_s *shard_info);
+
 #endif /*OIO_SDS__meta2v2__meta2_utils_sharding_h*/
