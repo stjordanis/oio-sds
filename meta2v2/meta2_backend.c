@@ -1121,56 +1121,57 @@ meta2_backend_list_aliases(struct meta2_backend_s *m2b, struct oio_url_s *url,
 
 	guint32 open_mode = lp->flag_local ? M2V2_FLAG_LOCAL: 0;
 	err = m2b_open(m2b, url, _mode_readonly(open_mode), &sq3);
-	if (!err && !oio_ext_is_shard()) {
-		gchar *fake_path = NULL;
-		if (lp->prefix && !lp->marker_start) {
-			fake_path = g_strdup("");
-		} else if (g_strcmp0(lp->prefix, lp->marker_start) > 0) {
-			fake_path = g_strdup(lp->prefix);
-		} else {
-			/* HACK: "\x01" is the (UTF-8 encoded) first unicode */
-			fake_path = g_strdup_printf("%s\x01", lp->marker_start);
-		}
-		err = _redirect_to_shard(sq3, fake_path);
-		g_free(fake_path);
-		if (err)
-			m2b_close(sq3);
-	}
 	if (!err) {
-		struct shard_info_s *shard_info = NULL;
-		err = _meta2_backend_get_shard_info(sq3, &shard_info);
-		if (err) {
-			GRID_WARN("Failed to get shard info: (%d) %s",
-					err->code, err->message);
-			g_clear_error(&err);
-		}
-		const gchar *current_marker_start = lp->marker_start;
-		const gchar *current_marker_end = lp->marker_end;
-		if (shard_info) { // Update the markers according to the range
-			if (*shard_info->lower && (!lp->marker_start
-					|| g_strcmp0(lp->marker_start, shard_info->upper) < 0)) {
-				lp->marker_start = g_strdup(shard_info->lower);
-			}
-			if (*shard_info->upper && (!lp->marker_end
-					|| g_strcmp0(lp->marker_end, shard_info->upper) >= 0)) {
+		if (!oio_ext_is_shard()) {
+			gchar *fake_path = NULL;
+			if (lp->prefix && !lp->marker_start) {
+				fake_path = g_strdup("");
+			} else if (g_strcmp0(lp->prefix, lp->marker_start) > 0) {
+				fake_path = g_strdup(lp->prefix);
+			} else {
 				/* HACK: "\x01" is the (UTF-8 encoded) first unicode */
-				lp->marker_end = g_strdup_printf("%s\x01", shard_info->upper);
+				fake_path = g_strdup_printf("%s\x01", lp->marker_start);
 			}
-			shard_info_free(shard_info);
-		}
-		err = m2db_list_aliases(sq3, lp, headers, cb, u0);
-		if (lp->marker_start != current_marker_start) {
-			g_free((gchar *)lp->marker_start);
-			lp->marker_start = current_marker_start;
-		}
-		if (lp->marker_end != current_marker_end) {
-			g_free((gchar *)lp->marker_end);
-			lp->marker_end = current_marker_end;
+			err = _redirect_to_shard(sq3, fake_path);
+			g_free(fake_path);
 		}
 		if (!err) {
-			if (out_properties)
+			struct shard_info_s *shard_info = NULL;
+			err = _meta2_backend_get_shard_info(sq3, &shard_info);
+			if (err) {
+				GRID_WARN("Failed to get shard info: (%d) %s",
+						err->code, err->message);
+				g_clear_error(&err);
+			}
+			const gchar *current_marker_start = lp->marker_start;
+			const gchar *current_marker_end = lp->marker_end;
+			if (shard_info) { // Update the markers according to the range
+				if (*shard_info->lower && (!lp->marker_start
+						|| g_strcmp0(lp->marker_start, shard_info->upper) < 0)) {
+					lp->marker_start = g_strdup(shard_info->lower);
+				}
+				if (*shard_info->upper && (!lp->marker_end
+						|| g_strcmp0(lp->marker_end, shard_info->upper) >= 0)) {
+					/* HACK: "\x01" is the (UTF-8 encoded) first unicode */
+					lp->marker_end = g_strdup_printf("%s\x01", shard_info->upper);
+				}
+				shard_info_free(shard_info);
+			}
+			err = m2db_list_aliases(sq3, lp, headers, cb, u0);
+			if (lp->marker_start != current_marker_start) {
+				g_free((gchar *)lp->marker_start);
+				lp->marker_start = current_marker_start;
+			}
+			if (lp->marker_end != current_marker_end) {
+				g_free((gchar *)lp->marker_end);
+				lp->marker_end = current_marker_end;
+			}
+		}
+		if (!err || err->code == CODE_REDIRECT_SHARD) {
+			if (!oio_ext_is_shard() && out_properties)
 				*out_properties = sqlx_admin_get_keyvalues(sq3);
-
+		}
+		if (!err) {
 			if (end_cb)
 				end_cb(sq3);
 		}
