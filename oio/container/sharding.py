@@ -19,10 +19,8 @@ import time
 from oio import ObjectStorageApi
 from oio.common import exceptions
 from oio.common.client import ProxyClient
-from oio.common.constants import M2_PROP_OBJECTS, \
-    M2_PROP_SHARDING_SHARD_INFO, STRLEN_CID
-from oio.common.easy_value import int_value, is_hexa
-from oio.common.json import json
+from oio.common.constants import M2_PROP_SHARDING_SHARD_INFO, STRLEN_CID
+from oio.common.easy_value import is_hexa
 from oio.common.utils import cid_from_name
 
 
@@ -141,7 +139,7 @@ class ContainerSharding(ProxyClient):
         return new_shards
 
     def _create_shard(self, root_account, root_container, shard,
-                      parent_cid=None):
+                      parent_cid=None, **kwargs):
         timestamp = int(time.time() * 1e6)
 
         root_cid = cid_from_name(root_account, root_container)
@@ -151,20 +149,19 @@ class ContainerSharding(ProxyClient):
         shard_container = '%s-%s-%d-%d' % (
             root_container, parent_cid, timestamp, shard['index'])
 
-        # Copy shard info in the system properties
+        # Create shard container
         shard_info = {
             'root_cid': root_cid,
             'timestamp': timestamp,
             'lower': shard['lower'],
             'upper': shard['upper']
         }
-        system = {M2_PROP_SHARDING_SHARD_INFO: json.dumps(shard_info)}
-
-        # Create shard container
-        if not self.api.container_create(shard_account, shard_container,
-                                         system=system):
-            raise ValueError("Container already exists: %s %s"
-                             % (shard_account, shard_container))
+        params = self._make_params(shard_account, reference=shard_container,
+                                   **kwargs)
+        resp, body = self._request('POST', '/create_shard', params=params,
+                                   json=shard_info, **kwargs)
+        if resp.status != 204:
+            raise exceptions.from_response(resp, body)
 
         # Fill the shard info with the CID of the shard container
         shard['cid'] = cid_from_name(shard_account, shard_container)
@@ -195,11 +192,6 @@ class ContainerSharding(ProxyClient):
 
         if system.get(M2_PROP_SHARDING_SHARD_INFO) is not None:
             raise ValueError('Container is already a shard container')
-
-        objects = int_value(system.get(M2_PROP_OBJECTS), 0)
-        if objects:
-            # TODO(adu): Move the objects in the shards
-            raise NotImplementedError()
 
         old_shards = self.show_shards(root_account, root_container)
         if old_shards:
