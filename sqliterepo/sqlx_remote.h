@@ -97,7 +97,7 @@ GByteArray* sqlx_pack_GETVERS(const struct sqlx_name_s *name, const gchar *peers
 		gint64 deadline);
 
 GByteArray* sqlx_pack_SNAPSHOT(const struct sqlx_name_s *name,
-		const gchar *src_addr, const gchar *src_base,
+		const gchar *src_addr, const gchar *src_base, const gchar *src_suffix,
 		gchar **dest_properties, gint64 deadline);
 GByteArray* sqlx_pack_PIPEFROM(const struct sqlx_name_s *name, const gchar *source, gint64 deadline);
 GByteArray* sqlx_pack_PIPETO(const struct sqlx_name_s *name, const gchar *target, gint64 deadline);

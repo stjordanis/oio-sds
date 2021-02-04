@@ -493,6 +493,14 @@ m2v2_remote_execute_DESTROY_many(gchar **targets, struct oio_url_s *url, guint32
 /* ------------------------------------------------------------------------- */
 
 GByteArray*
+m2v2_remote_pack_PREPARE_SHARDING(struct oio_url_s *url, gint64 dl)
+{
+	MESSAGE msg = _m2v2_build_request(NAME_MSGNAME_M2V2_PREPARE_SHARDING,
+			url, NULL, dl);
+	return message_marshall_gba_and_clean(msg);
+}
+
+GByteArray*
 m2v2_remote_pack_REPLACE_SHARDING(struct oio_url_s *url, GByteArray *shards,
 		gint64 dl)
 {

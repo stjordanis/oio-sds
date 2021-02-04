@@ -45,9 +45,22 @@ License along with this library.
 
 #define EXTRACT_STRING(Name,Dst) do { \
 	err = metautils_message_extract_string(reply->request, Name, Dst, sizeof(Dst)); \
-	if (NULL != err) { \
+	if(err != NULL) { \
 		reply->send_error(0, err); \
 		return TRUE; \
+	} \
+} while (0)
+
+#define EXTRACT_STRING2(Name,Dst,Opt) do { \
+	err = metautils_message_extract_string(reply->request, Name, Dst, sizeof(Dst)); \
+	if(err != NULL) { \
+		if(!Opt) { \
+			reply->send_error(0, err); \
+			return TRUE; \
+		} else { \
+			g_clear_error(&err); \
+			Dst[0] = '\0'; \
+		} \
 	} \
 } while (0)
 
@@ -1182,6 +1195,8 @@ _handler_SNAPSHOT(struct gridd_reply_ctx_s *reply,
 	GError *err;
 	gchar src_addr[64];
 	gchar src_base[STRLEN_CONTAINERID + 10];
+	gchar src_suffix[32];
+	gchar *src_type = NULL;
 	gchar *dest_peers = NULL;
 	gchar **dest_properties = NULL;
 	struct sqlx_name_inline_s name;
@@ -1202,10 +1217,13 @@ _handler_SNAPSHOT(struct gridd_reply_ctx_s *reply,
 
 	EXTRACT_STRING(NAME_MSGKEY_SRC, src_addr);
 	EXTRACT_STRING(NAME_MSGKEY_SRC_BASE, src_base);
-	reply->subject("%s.%s|%s", name.base, name.type, src_addr);
+	EXTRACT_STRING2(NAME_MSGKEY_SRC_SUFFIX, src_suffix, TRUE);
+	src_type = g_strdup_printf("%s%s", name.type, src_suffix);
+
+	reply->subject("%s.%s|%s", name.base, src_type, src_addr);
 	_load_sqlx_peers(reply, &dest_peers);
 
-	struct sqlx_name_s src = {name.ns, src_base, name.type};
+	struct sqlx_name_s src = {name.ns, src_base, src_type};
 	err = _snapshot_from(src_addr, repo, &src, &no, dest_peers,
 			dest_properties);
 
@@ -1216,6 +1234,7 @@ cleanup:
 		reply->send_reply(CODE_FINAL_OK, "OK");
 	}
 
+	g_free(src_type);
 	g_strfreev(dest_properties);
 	g_free(dest_peers);
 	return TRUE;

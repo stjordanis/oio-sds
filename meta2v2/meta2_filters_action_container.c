@@ -568,6 +568,29 @@ meta2_filter_action_touch_container(struct gridd_filter_ctx_s *ctx,
 /* Container Sharding ------------------------------------------------------- */
 
 int
+meta2_filter_action_prepare_container_sharding(struct gridd_filter_ctx_s *ctx,
+		struct gridd_reply_ctx_s *reply)
+{
+	(void) reply;
+
+	struct oio_url_s *url = meta2_filter_ctx_get_url(ctx);
+	struct meta2_backend_s *m2b = meta2_filter_ctx_get_backend(ctx);
+	gint64 timestamp = 0;
+
+	GError *err = meta2_backend_prepare_container_sharding(m2b, url,
+			&timestamp);
+	if (!err) {
+		gchar tmp[64];
+		g_snprintf(tmp, sizeof(tmp), "%"G_GINT64_FORMAT, timestamp);
+		reply->add_header(NAME_MSGKEY_TIMESTAMP,
+				metautils_gba_from_string(tmp));
+		return FILTER_OK;
+	}
+	meta2_filter_ctx_set_error(ctx, err);
+	return FILTER_KO;
+}
+
+int
 meta2_filter_action_replace_container_sharding(struct gridd_filter_ctx_s *ctx,
 		struct gridd_reply_ctx_s *reply)
 {

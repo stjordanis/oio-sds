@@ -19,6 +19,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include <glib.h>
+#include <linux/fs.h>
+#include <sys/ioctl.h>
 
 #include <metautils/lib/metautils.h>
 #include <metautils/lib/common_variables.h>
@@ -2504,6 +2506,104 @@ meta2_backend_content_from_contentid (struct meta2_backend_s *m2b,
 }
 
 /* Container Sharding ------------------------------------------------------- */
+
+static GError*
+__copy_base(struct sqlx_sqlite3_s *sq3 UNUSED, gchar *dst)
+{
+	EXTRA_ASSERT(dst != NULL);
+
+	GError *err = NULL;
+	FILE *src_fp = NULL, *dest_fp = NULL;
+
+	GRID_DEBUG("Copying base %s to %s with reflink", sq3->path_inline, dst);
+	src_fp = fopen(sq3->path_inline, "r");
+	if (!src_fp) {
+		err = NEWERROR(errno, "Failed to open: %s", strerror(errno));
+		goto end;
+	}
+	dest_fp = fopen(dst, "w");
+	if (!dest_fp) {
+		err = NEWERROR(errno, "Failed to open: %s", strerror(errno));
+		goto end;
+	}
+	gint rc = ioctl(fileno(dest_fp), FICLONE, fileno(src_fp));
+	if (rc != 0) {
+		if (errno == EOPNOTSUPP) {
+			GRID_WARN("Reflink is not enabled, "
+					"copying base %s to %s without reflink",
+					sq3->path_inline, dst);
+			gchar bytes[4096];
+			size_t nb_read = 0;
+			size_t nb_written = 0;
+			while (!feof(src_fp)) {
+				nb_read = fread(bytes, sizeof(gchar), sizeof(bytes), src_fp);
+				if (nb_read != sizeof(bytes) && !feof(src_fp)) {
+					err = SYSERR("Failed to read");
+					goto end;
+				}
+				nb_written = fwrite(bytes, sizeof(gchar), nb_read, dest_fp);
+				if (nb_written != nb_read) {
+					err = SYSERR("Failed to write");
+					goto end;
+				}
+			}
+			rc = fflush(dest_fp);
+			if (rc == EOF) {
+				err = NEWERROR(errno, "Failed to flush: %s",
+						strerror(errno));
+				goto end;
+			}
+		} else {
+			err = NEWERROR(errno, "Failed to share data: %s",
+					strerror(errno));
+			goto end;
+		}
+	}
+end:
+	if (err)
+		g_prefix_error(&err, "Failed to copy %s to %s: ", sq3->path_inline,
+				dst);
+	if (src_fp)
+		fclose(src_fp);
+	if (dest_fp)
+		fclose(dest_fp);
+	return err;
+}
+
+GError*
+meta2_backend_prepare_container_sharding(struct meta2_backend_s *m2b,
+		struct oio_url_s *url, gint64 *ptimestamp)
+{
+	GError *err = NULL;
+	struct sqlx_sqlite3_s *sq3 = NULL;
+	gint64 timestamp = 0;
+
+	EXTRA_ASSERT(m2b != NULL);
+	EXTRA_ASSERT(url != NULL);
+
+	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
+	if (!err) {
+		timestamp = oio_ext_real_time();
+
+		gchar *copy_path = g_strdup_printf("%s.sharding-%"G_GINT64_FORMAT,
+					sq3->path_inline, timestamp);
+		err = __copy_base(sq3, copy_path);
+		if (err) {
+			if (remove(copy_path)) {
+				GRID_WARN("Failed to remove file %s: (%d) %s", copy_path, errno,
+						strerror(errno));
+			}
+		}
+		g_free(copy_path);
+
+		m2b_close(sq3);
+	}
+
+	if (!err) {
+		*ptimestamp = timestamp;
+	}
+	return err;
+}
 
 GError*
 _meta2_backend_get_shard_info(struct sqlx_sqlite3_s *sq3,

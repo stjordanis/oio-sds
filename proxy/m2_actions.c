@@ -1466,7 +1466,8 @@ action_m2_container_propdel (struct req_args_s *args, struct json_object *jargs)
 static enum http_rc_e
 _container_snapshot(struct req_args_s *args,
 		struct oio_url_s *src_url, const gint src_seq,
-		struct oio_url_s *dest_url, gchar **dest_properties)
+		const gchar *src_suffix, struct oio_url_s *dest_url,
+		gchar **dest_properties)
 {
 	EXTRA_ASSERT(src_url != NULL);
 	EXTRA_ASSERT(dest_url != NULL);
@@ -1550,8 +1551,8 @@ _container_snapshot(struct req_args_s *args,
 	gchar *src_addr = _resolve_service_id(src_urlv[0]);
 	GByteArray * _pack_snapshot(const struct sqlx_name_s *n,
 			const gchar **headers UNUSED) {
-		return sqlx_pack_SNAPSHOT(n, src_addr, src_base, all_dest_properties,
-				DL());
+		return sqlx_pack_SNAPSHOT(n, src_addr, src_base, src_suffix,
+				all_dest_properties, DL());
 	}
 	err = _resolve_meta2(args, CLIENT_PREFER_MASTER,
 			_pack_snapshot, NULL, NULL);
@@ -1596,7 +1597,7 @@ _m2_container_snapshot(struct req_args_s *args, struct json_object *jargs)
 	oio_url_set(dest_url, OIOURL_USER, container);
 	oio_url_set(dest_url, OIOURL_HEXID, NULL);
 
-	enum http_rc_e rc = _container_snapshot(args, args->url, seq_num,
+	enum http_rc_e rc = _container_snapshot(args, args->url, seq_num, NULL,
 			dest_url, NULL);
 
 	oio_url_clean(dest_url);
@@ -2422,6 +2423,23 @@ enum http_rc_e action_container_raw_delete (struct req_args_s *args) {
 /* SHARDING action resource ------------------------------------------------- */
 
 static gboolean
+_timestamp_extract(gpointer ctx, guint status UNUSED,
+		MESSAGE reply)
+{
+	gint64 *timestamp = ctx;
+	EXTRA_ASSERT(timestamp != NULL);
+
+	GError *err = metautils_message_extract_strint64(reply,
+			NAME_MSGKEY_TIMESTAMP, timestamp);
+	if (err) {
+		GRID_DEBUG("Callback error: (%d) %s", err->code, err->message);
+		g_error_free(err);
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static gboolean
 _body_extract(gpointer ctx, guint status UNUSED, MESSAGE reply)
 {
 	GString **gstr = ctx;
@@ -2440,12 +2458,32 @@ _body_extract(gpointer ctx, guint status UNUSED, MESSAGE reply)
 }
 
 static enum http_rc_e
+action_m2_container_sharding_prepare(struct req_args_s *args,
+		struct json_object *j UNUSED)
+{
+	GError *err = NULL;
+	gint64 timestamp = 0;
+
+	PACKER_VOID(_pack) {
+		return m2v2_remote_pack_PREPARE_SHARDING(args->url, DL());
+	};
+	err = _resolve_meta2(args, _prefer_master(), _pack,
+			&timestamp, _timestamp_extract);
+	if (err)
+		return _reply_common_error(args, err);
+	args->rp->add_header(PROXYD_HEADER_PREFIX "sharding-timestamp",
+			g_strdup_printf("%"G_GINT64_FORMAT, timestamp));
+	return _reply_m2_error(args, err);
+}
+
+static enum http_rc_e
 action_m2_container_sharding_create_shard(struct req_args_s *args,
 		struct json_object *j)
 {
 	GError *err = NULL;
 	struct shard_info_s *shard_info = NULL;
 	gchar *shard_info_str = NULL;
+	gchar *src_suffix = NULL;
 
 	err = shard_info_decode_json(j, &shard_info);
 	if (err)
@@ -2453,7 +2491,7 @@ action_m2_container_sharding_create_shard(struct req_args_s *args,
 	shard_info_str = shard_info_encode(shard_info);
 
 	gchar *shard_properties[4] = {
-		M2V2_ADMIN_SHARDING_SHARD, shard_info_str,
+		M2V2_ADMIN_SHARDING_SHARD_INFO, shard_info_str,
 		NULL, NULL
 	};
 
@@ -2461,9 +2499,12 @@ action_m2_container_sharding_create_shard(struct req_args_s *args,
 	oio_url_set(root_url, OIOURL_ACCOUNT, NULL);
 	oio_url_set(root_url, OIOURL_USER, NULL);
 	oio_url_set(root_url, OIOURL_HEXID, shard_info->root_cid);
-	enum http_rc_e rc = _container_snapshot(args, root_url, 1, args->url,
-		shard_properties);
+	src_suffix = g_strdup_printf(".sharding-%"G_GINT64_FORMAT,
+			shard_info->timestamp);
+	enum http_rc_e rc = _container_snapshot(args, root_url, 1, src_suffix,
+			args->url, shard_properties);
 
+	g_free(src_suffix);
 	g_free(shard_info_str);
 	shard_info_free(shard_info);
 	return rc;
@@ -2499,6 +2540,33 @@ action_m2_container_sharding_show(struct req_args_s *args,
 	if (err)
 		return _reply_common_error(args, err);
 	return _reply_success_json(args, gstr);
+}
+
+// SHARDING{{
+// POST /v3.0/{NS}/container/sharding/prepare?acct={account}&ref={container}
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Prepare container to be shard.
+//
+// .. code-block:: http
+//
+//    POST /v3.0/OPENIO/container/sharding/prepare?acct=my_account&ref=mycontainer HTTP/1.1
+//    Host: 127.0.0.1:6000
+//    User-Agent: curl/7.58.0
+//    Accept: */*
+//    Content-Length: 110
+//    Content-Type: application/x-www-form-urlencoded
+//
+//
+// .. code-block:: http
+//
+//    HTTP/1.1 200 OK
+//    Connection: Close
+//    Content-Type: application/json
+//    Content-Length: 225
+//
+// }}SHARDING
+enum http_rc_e action_container_sharding_prepare(struct req_args_s *args) {
+	return rest_action(args, action_m2_container_sharding_prepare);
 }
 
 // SHARDING{{
