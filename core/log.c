@@ -32,6 +32,7 @@ int oio_log_level_default = 0x7F;
 int oio_log_level = 0x7F;
 
 int oio_log_flags = 0;
+const gchar *x_ovh_token = g_getenv("OIO_LOG_X_OVH_TOKEN")
 
 guint16
 oio_log_thread_id(GThread *thread)
@@ -181,6 +182,11 @@ oio_log_syslog(const gchar *log_domain, GLogLevelFlags log_level,
 
 	/* Rough estimation that should be enough in most cases */
 	GString *gstr = g_string_sized_new(512);
+	if (x_ovh_token && *x_ovh_token) {
+		g_string_append_static(gstr, "X-OVH-TOKEN:");
+		g_string_append(gstr, x_ovh_token);
+		g_string_append_c(gstr, '\t');
+	}
 
 	g_string_append_printf(gstr, "pid:%d\ttid:%04X", getpid(), oio_log_current_thread_id());
 
