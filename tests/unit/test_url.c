@@ -217,6 +217,93 @@ test_dup (void)
 	oio_url_pclean (&u0);
 }
 
+/* Test the generation of chunk IDs depending on object name */
+static void
+test_chunk_id_generation(void)
+{
+	char buf[65] = {0};
+	struct oio_url_s *url = oio_url_init("NS/ACCT/FVE//obj");
+	const char expected_id[] =
+			"B555ECC3C06762055D464697B3E522DEBE11D69920D6322D4A05609300594543";
+	const char expected_id_1[] =
+			"9EA177B73CDE093ED3530DA1A06BA7DA1F038327FA5F2A56B5417140B8A616BD";
+	const char expected_id_2[] =
+			"A69598A38612D0B126EA0BD55A538362D454BAE6555F8348251A1C3D1F5EDF42";
+
+	oio_url_compute_chunk_id(url, "0", "SINGLE", buf, sizeof(buf));
+	g_assert_cmpint(64, ==, strlen(buf));
+	g_assert_cmpstr(expected_id, ==, buf);
+
+	/* Short buffer */
+	oio_url_compute_chunk_id(url, "0", "SINGLE", buf, 33);
+	g_assert_cmpint(32, ==, strlen(buf));
+	g_assert_cmpstr("B555ECC3C06762055D464697B3E522DE", ==, buf);
+
+	/* Different position */
+	oio_url_compute_chunk_id(url, "1", "SINGLE", buf, 33);
+	g_assert_cmpint(32, ==, strlen(buf));
+	g_assert_cmpstr("B555ECC3C06762055D464697B3E522DE", !=, buf);
+	oio_url_compute_chunk_id(url, "0.1", "SINGLE", buf, 33);
+	g_assert_cmpint(32, ==, strlen(buf));
+	g_assert_cmpstr("B555ECC3C06762055D464697B3E522DE", !=, buf);
+	oio_url_compute_chunk_id(url, "11.11", "SINGLE", buf, 33);
+	g_assert_cmpint(32, ==, strlen(buf));
+	g_assert_cmpstr("B555ECC3C06762055D464697B3E522DE", !=, buf);
+
+	/* Different policy */
+	oio_url_compute_chunk_id(url, "0", "DUP", buf, 33);
+	g_assert_cmpint(32, ==, strlen(buf));
+	g_assert_cmpstr("AC5F24FF414DF6CB46B6DEAC4209462A", !=, buf);
+	oio_url_compute_chunk_id(url, "0", "", buf, 33);
+	g_assert_cmpint(32, ==, strlen(buf));
+	g_assert_cmpstr("AC5F24FF414DF6CB46B6DEAC4209462A", !=, buf);
+
+	/* Different version */
+	oio_url_set(url, OIOURL_VERSION, "1");
+	oio_url_compute_chunk_id(url, "0", "SINGLE", buf, sizeof(buf));
+	g_assert_cmpint(64, ==, strlen(buf));
+	g_assert_cmpstr(expected_id_1, ==, buf);
+
+	oio_url_set(url, OIOURL_VERSION, "2");
+	oio_url_compute_chunk_id(url, "0", "SINGLE", buf, sizeof(buf));
+	g_assert_cmpint(64, ==, strlen(buf));
+	g_assert_cmpstr(expected_id_2, ==, buf);
+
+	oio_url_pclean (&url);
+}
+
+static void
+test_chunk_id_generation_partial_input(void)
+{
+	char buf[33] = {0};
+	struct oio_url_s *url = NULL;
+
+	/* URL without object name */
+	url = oio_url_init("NS/ACCT/FVE");
+	oio_url_compute_chunk_id(url, "0", "SINGLE", buf, sizeof(buf));
+	g_assert_cmpint(32, ==, strlen(buf));
+	g_assert_cmpstr("D83E39C2D4B7A6AB4C918FA21DBEF8F6", ==, buf);
+
+	/* No position (same as position "0") */
+	oio_url_compute_chunk_id(url, NULL, "SINGLE", buf, sizeof(buf));
+	g_assert_cmpint(32, ==, strlen(buf));
+	g_assert_cmpstr("D83E39C2D4B7A6AB4C918FA21DBEF8F6", ==, buf);
+
+	/* No storage policy */
+	oio_url_compute_chunk_id(url, "0", NULL, buf, sizeof(buf));
+	g_assert_cmpint(32, ==, strlen(buf));
+	g_assert_cmpstr("C57F3BF0EAD4632587D438749061C57B", ==, buf);
+
+	oio_url_pclean(&url);
+
+	/* Empty URL */
+	url = oio_url_empty();
+	oio_url_compute_chunk_id(url, "0", "SINGLE", buf, sizeof(buf));
+	g_assert_cmpint(32, ==, strlen(buf));
+	g_assert_cmpstr("696B27F47753CEBC548B4F0C0DDC7D0F", ==, buf);
+	oio_url_pclean(&url);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -224,6 +311,9 @@ main(int argc, char **argv)
 	g_test_add_func("/core/url/configure/valid", test_configure_valid);
 	g_test_add_func("/core/url/configure/invalid", test_configure_invalid);
 	g_test_add_func("/core/url/dup", test_dup);
+	g_test_add_func("/core/url/chunkid/valid", test_chunk_id_generation);
+	g_test_add_func("/core/url/chunkid/partial",
+			test_chunk_id_generation_partial_input);
 	return g_test_run();
 }
 
