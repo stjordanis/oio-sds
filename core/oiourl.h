@@ -165,6 +165,20 @@ int oio_url_has_fq_container (const struct oio_url_s *u);
 */
 gboolean oio_url_check(const struct oio_url_s *u, const char *n, const gchar **e);
 
+/**
+ * Compute the ID of the chunk at the specified position for the specified
+ * storage policy.
+ *
+ * @param u the URL
+ * @param position the position of the chunk, simple ("1") or composed ("1.1")
+ * @param policy the name of the storage policy
+ * @param out an output buffer
+ * @param outsize size of the output buffer. In case the ID is longer than the
+ *                buffer, it will be truncated.
+ */
+void oio_url_compute_chunk_id(struct oio_url_s *u, const char *position,
+		const char *policy, char *out, size_t outsize);
+
 #ifdef __cplusplus
 }
 #endif
