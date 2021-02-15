@@ -2,6 +2,7 @@
 OpenIO SDS meta2v2
 Copyright (C) 2014 Worldline, as part of Redcurrant
 Copyright (C) 2015-2019 OpenIO SAS, as part of OpenIO SDS
+Copyright (C) 2021 OVH SAS
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -83,8 +84,8 @@ void m2v2_sorted_content_free(struct m2v2_sorted_content_s *content);
 typedef void (*m2_onbean_cb) (gpointer u, gpointer bean);
 
 /** Get the cumulated size and number of contents in the database. */
-void m2db_get_container_size_and_obj_count(sqlite3 *db, gboolean check_alias,
-		guint64 *size, gint64 *count);
+void m2db_get_container_size_and_obj_count(struct sqlx_sqlite3_s *sq3,
+		gboolean check_alias, guint64 *size, gint64 *count);
 
 gint64 m2db_get_max_versions(struct sqlx_sqlite3_s *sq3, gint64 def);
 

@@ -240,9 +240,8 @@ GError* _meta2_backend_get_shard_info(struct sqlx_sqlite3_s *sq3,
 		struct shard_info_s **pshard_info);
 
 /** Prepare container to be shard */
-GError* meta2_backend_prepare_container_sharding(
-		struct meta2_backend_s *m2b, struct oio_url_s *url,
-		gint64 *ptimestamp);
+GError* meta2_backend_prepare_container_sharding(struct meta2_backend_s *m2b,
+		struct oio_url_s *url, gint64 *ptimestamp, gchar **pqueue_url);
 
 /** Replace shard ranges in root container */
 GError* meta2_backend_replace_container_sharding(

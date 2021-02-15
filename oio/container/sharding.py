@@ -22,6 +22,7 @@ from oio.common.constants import M2_PROP_SHARDING_SHARD_INFO, STRLEN_CID
 from oio.common.easy_value import int_value, is_hexa
 from oio.common.exceptions import OioException
 from oio.common.utils import cid_from_name
+from oio.event.beanstalk import Beanstalk
 
 
 class ContainerSharding(ProxyClient):
@@ -148,7 +149,10 @@ class ContainerSharding(ProxyClient):
             timestamp = int_value(timestamp, None)
         if not timestamp:
             raise OioException("Missing timestamp")
-        return timestamp
+        queue_url = resp.headers.get('x-oio-sharding-queue-url')
+        if not queue_url:
+            raise OioException("Missing queue URL")
+        return timestamp, queue_url
 
     def _create_shard(self, root_account, root_container, timestamp, shard,
                       parent_cid=None, **kwargs):
@@ -195,8 +199,6 @@ class ContainerSharding(ProxyClient):
                        enable=False):
         shards = self._format_shards(shards, new_shards=True)
 
-        # TODO(adu) Lock the root container
-
         meta = self.api.container_get_properties(root_account, root_container)
         system = meta.get('system', dict())
 
@@ -210,15 +212,31 @@ class ContainerSharding(ProxyClient):
         elif not enable:
             raise ValueError('Sharding is not enabled for this container')
 
-        # Prepare the sharding
-        timestamp = self._prepare_sharding(root_account, root_container)
+        try:
+            # Prepare the sharding
+            timestamp, queue_url = self._prepare_sharding(
+                    root_account, root_container)
 
-        # Create the new shards
-        for new_shard in shards:
-            self._create_shard(root_account, root_container, timestamp,
-                               new_shard)
+            # Create the new shards
+            for new_shard in shards:
+                self._create_shard(root_account, root_container, timestamp,
+                                   new_shard)
 
-        # Apply the new shards
-        self._replace_shards(root_account, root_container, shards)
+            root_cid = cid_from_name(root_account, root_container)
+            sharding_beanstalkd = Beanstalk.from_url(queue_url)
+            sharding_tube = root_cid + '.sharding-' + str(timestamp)
+            sharding_beanstalkd.use(sharding_tube)
+            sharding_beanstalkd.watch(sharding_tube)
+            # while True:
+            #     job_id, data = sharding_beanstalkd.reserve(timeout=0)
+            #     print(data)
+            #     sharding_beanstalkd.delete(job_id)
+            sharding_beanstalkd.close()
 
-        # TODO(adu) Unlock the root container
+            # TODO(adu) Lock the root container
+
+            # Apply the new shards
+            self._replace_shards(root_account, root_container, shards)
+        except Exception:
+            # TODO(adu) Abort sharding
+            raise

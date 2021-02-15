@@ -2422,20 +2422,27 @@ enum http_rc_e action_container_raw_delete (struct req_args_s *args) {
 
 /* SHARDING action resource ------------------------------------------------- */
 
-static gboolean
-_timestamp_extract(gpointer ctx, guint status UNUSED,
-		MESSAGE reply)
-{
-	gint64 *timestamp = ctx;
-	EXTRA_ASSERT(timestamp != NULL);
+struct sharding_prepare_s {
+	gint64 timestamp;
+	gchar *queue_url;
+};
 
-	GError *err = metautils_message_extract_strint64(reply,
-			NAME_MSGKEY_TIMESTAMP, timestamp);
+static gboolean
+_sharding_prepare_extract(gpointer ctx, guint status UNUSED, MESSAGE reply)
+{
+	GError *err = NULL;
+	struct sharding_prepare_s *sharding_prepare = ctx;
+	EXTRA_ASSERT(sharding_prepare != NULL);
+
+	err = metautils_message_extract_strint64(reply,
+			NAME_MSGKEY_TIMESTAMP, &(sharding_prepare->timestamp));
 	if (err) {
 		GRID_DEBUG("Callback error: (%d) %s", err->code, err->message);
 		g_error_free(err);
 		return FALSE;
 	}
+	sharding_prepare->queue_url = metautils_message_extract_string_copy(reply,
+			NAME_MSGKEY_QUEUE_URL);
 	return TRUE;
 }
 
@@ -2462,17 +2469,22 @@ action_m2_container_sharding_prepare(struct req_args_s *args,
 		struct json_object *j UNUSED)
 {
 	GError *err = NULL;
-	gint64 timestamp = 0;
+	struct sharding_prepare_s sharding_prepare = {0};
 
 	PACKER_VOID(_pack) {
 		return m2v2_remote_pack_PREPARE_SHARDING(args->url, DL());
 	};
 	err = _resolve_meta2(args, _prefer_master(), _pack,
-			&timestamp, _timestamp_extract);
-	if (err)
+			&sharding_prepare, _sharding_prepare_extract);
+	if (err) {
+		if (sharding_prepare.queue_url)
+			g_free(sharding_prepare.queue_url);
 		return _reply_common_error(args, err);
+	}
 	args->rp->add_header(PROXYD_HEADER_PREFIX "sharding-timestamp",
-			g_strdup_printf("%"G_GINT64_FORMAT, timestamp));
+			g_strdup_printf("%"G_GINT64_FORMAT, sharding_prepare.timestamp));
+	args->rp->add_header(PROXYD_HEADER_PREFIX "sharding-queue-url",
+			sharding_prepare.queue_url);
 	return _reply_m2_error(args, err);
 }
 

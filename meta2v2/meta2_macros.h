@@ -57,6 +57,18 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # define M2V2_ADMIN_SHARDING_SHARD_INFO M2V2_ADMIN_PREFIX_SYS "sharding.shard_info"
 # endif
 
+# ifndef M2V2_ADMIN_SHARDING_STATE
+# define M2V2_ADMIN_SHARDING_STATE M2V2_ADMIN_PREFIX_SYS "sharding.state"
+# endif
+
+# ifndef M2V2_ADMIN_SHARDING_STATE_TIMESTAMP
+# define M2V2_ADMIN_SHARDING_STATE_TIMESTAMP M2V2_ADMIN_PREFIX_SYS "sharding.state.timestamp"
+# endif
+
+# ifndef M2V2_ADMIN_SHARDING_QUEUE
+# define M2V2_ADMIN_SHARDING_QUEUE M2V2_ADMIN_PREFIX_SYS "sharding.queue"
+# endif
+
 # ifndef M2V2_ADMIN_SHARDING_SHARD_RANGES
 # define M2V2_ADMIN_SHARDING_SHARD_RANGES "sharding.shard_ranges"
 # endif

@@ -3,6 +3,7 @@
 # OpenIO SDS meta2v2
 # Copyright (C) 2014 Worldline, as part of Redcurrant
 # Copyright (C) 2015-2020 OpenIO SAS, as part of OpenIO SDS
+# Copyright (C) 2021 OVH SAS
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -269,7 +270,7 @@ the list."""
         for t in self.allbeans.values():
             u = t.name.upper()
             out.write("\n/* Loader and Saver for "+u+" */\n")
-            out.write("\nGError* "+u+"_load(sqlite3 *db, const gchar *clause,\n")
+            out.write("\nGError* "+u+"_load(struct sqlx_sqlite3_s *sq3, const gchar *clause,\n")
             out.write("\t\tGVariant **params, on_bean_f cb, gpointer u);\n")
 
         for t in self.allbeans.values():
@@ -500,12 +501,12 @@ the list."""
         out.write("\n")
 
         for t in self.allbeans.values():
-            out.write("GError*\n"+t.c_name+"_load(sqlite3 *db, const gchar *clause, GVariant **params,")
+            out.write("GError*\n"+t.c_name+"_load(struct sqlx_sqlite3_s *sq3, const gchar *clause, GVariant **params,")
             out.write(" void (*cb)(gpointer u, gpointer bean), gpointer u)\n{\n")
-            out.write("\tEXTRA_ASSERT(db != NULL);\n")
+            out.write("\tEXTRA_ASSERT(sq3 != NULL);\n")
             out.write("\tEXTRA_ASSERT(clause != NULL);\n")
             out.write("\tEXTRA_ASSERT(params != NULL);\n")
-            out.write("\treturn _db_get_bean(&descr_struct_"+t.c_name+", db, clause, params, cb, u);\n")
+            out.write("\treturn _db_get_bean(&descr_struct_"+t.c_name+", sq3, clause, params, cb, u);\n")
             out.write("}\n\n")
 
 

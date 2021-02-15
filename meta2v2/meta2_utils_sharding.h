@@ -23,6 +23,18 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <metautils/lib/metautils.h>
 
+enum sharding_state_e {
+	// Container to shard
+	CONTAINER_TO_SHARD_STATE_SAVING_WRITES = 1,
+	CONTAINER_TO_SHARD_STATE_LOCKED,
+	CONTAINER_TO_SHARD_STATE_SHARDED,
+	CONTAINER_TO_SHARD_STATE_ABORTED,
+
+	// New shard
+	NEW_SHARD_STATE_APPLYING_SAVED_WRITES = 128,
+	NEW_SHARD_STATE_CLEANED_UP,
+};
+
 struct shard_range_s {
 	guint index;
 	gchar *lower;

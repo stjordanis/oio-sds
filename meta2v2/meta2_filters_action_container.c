@@ -576,14 +576,17 @@ meta2_filter_action_prepare_container_sharding(struct gridd_filter_ctx_s *ctx,
 	struct oio_url_s *url = meta2_filter_ctx_get_url(ctx);
 	struct meta2_backend_s *m2b = meta2_filter_ctx_get_backend(ctx);
 	gint64 timestamp = 0;
+	gchar *pqueue_url = NULL;
 
 	GError *err = meta2_backend_prepare_container_sharding(m2b, url,
-			&timestamp);
+			&timestamp, &pqueue_url);
 	if (!err) {
 		gchar tmp[64];
 		g_snprintf(tmp, sizeof(tmp), "%"G_GINT64_FORMAT, timestamp);
 		reply->add_header(NAME_MSGKEY_TIMESTAMP,
 				metautils_gba_from_string(tmp));
+		reply->add_header(NAME_MSGKEY_QUEUE_URL,
+				metautils_gba_from_string(pqueue_url));
 		return FILTER_OK;
 	}
 	meta2_filter_ctx_set_error(ctx, err);
