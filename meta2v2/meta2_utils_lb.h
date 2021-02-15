@@ -33,7 +33,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 	gsize uid_size = sizeof(uid);
 
 GError* oio_generate_focused_beans(
-		struct oio_url_s *url, gint64 size, gint64 chunk_size,
+		struct oio_url_s *url, gint64 pos, gint64 size, gint64 chunk_size,
 		struct storage_policy_s *pol, struct oio_lb_s *lb,
 		oio_location_t pin, int mode,
 		GSList **out);
@@ -49,8 +49,10 @@ GError* oio_generate_beans(
  * specified storage policy, starting at the `pin` location if the `mode`
  * allows it.
  */
-GError* get_spare_chunks_focused(struct oio_lb_s *lb,
-		const char *stgpol_name,
+GError* get_spare_chunks_focused(
+		struct oio_url_s *url, const gchar *pos,
+		struct oio_lb_s *lb,
+		struct storage_policy_s *policy,
 		oio_location_t pin, int mode,
 		GSList **result);
 
@@ -69,7 +71,9 @@ GError* get_spare_chunks_focused(struct oio_lb_s *lb,
  * @param result Pointer to a list where spare chunks will be inserted
  * @return A GError in case of error
  */
-GError* get_conditioned_spare_chunks(struct oio_lb_s *lb,
+GError* get_conditioned_spare_chunks(
+		struct oio_url_s *url, const gchar *position,
+		struct oio_lb_s *lb,
 		struct storage_policy_s *stgpol, const gchar *ns_name,
 		GSList *notin, GSList *broken,
 		GSList **result);

@@ -29,6 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <meta2v2/meta2_utils.h>
 
 #include <core/oiolb.h>
+#include <core/lb_variables.h>
 #include <glib.h>
 
 static GError*
@@ -69,18 +70,20 @@ out:
 /* ------------------------------------------------------------------------- */
 
 GError*
-get_spare_chunks_focused(struct oio_lb_s *lb, const char *pool,
+get_spare_chunks_focused(struct oio_url_s *url, const gchar *pos,
+		struct oio_lb_s *lb, struct storage_policy_s *policy,
 		oio_location_t pin, int mode,
 		GSList **result)
 {
 	GError *err = NULL;
 	GSList *beans = NULL;
+	const gchar *pool = storage_policy_get_service_pool(policy);
 
 	GRID_TRACE("%s pin=%"G_GINT64_MODIFIER"x mode=%d", __FUNCTION__, pin, mode);
 
 	void _on_id(struct oio_lb_selected_item_s *sel, gpointer u UNUSED)
 	{
-		struct bean_CHUNKS_s *chunk = generate_chunk_bean(sel, NULL);
+		struct bean_CHUNKS_s *chunk = generate_chunk_bean(url, pos, sel, policy);
 		struct bean_PROPERTIES_s *prop = generate_chunk_quality_bean(
 				sel, CHUNKS_get_id(chunk)->str, NULL);
 		beans = g_slist_prepend(beans, prop);
@@ -127,7 +130,8 @@ convert_chunks_to_locations(struct oio_lb_pool_s *pool, const gchar *ns_name,
 }
 
 GError*
-get_conditioned_spare_chunks(struct oio_lb_s *lb,
+get_conditioned_spare_chunks(struct oio_url_s *url, const gchar *pos,
+		struct oio_lb_s *lb,
 		struct storage_policy_s *policy,
 		const gchar *ns_name, GSList *already, GSList *broken,
 		GSList **result)
@@ -148,7 +152,8 @@ get_conditioned_spare_chunks(struct oio_lb_s *lb,
 
 	void _on_id(struct oio_lb_selected_item_s *sel, gpointer u UNUSED)
 	{
-		struct bean_CHUNKS_s *chunk = generate_chunk_bean(sel, NULL);
+		struct bean_CHUNKS_s *chunk = generate_chunk_bean(url, pos, sel,
+				policy);
 		struct bean_PROPERTIES_s *prop = generate_chunk_quality_bean(
 				sel, CHUNKS_get_id(chunk)->str, NULL);
 		beans = g_slist_prepend(beans, prop);
@@ -194,6 +199,8 @@ struct gen_ctx_s
 	guint8 h[16];
 	gint64 size;
 	gint64 chunk_size;
+	gint64 pos;
+	gint64 version;
 
 	/* location focused mode */
 	oio_location_t pin;
@@ -223,10 +230,11 @@ _m2_generate_alias_header(struct gen_ctx_s *ctx)
 	if (oio_url_has(ctx->url, OIOURL_VERSION) &&
 			(version = g_ascii_strtoll(
 				oio_url_get(ctx->url, OIOURL_VERSION), NULL, 10)) > 0) {
-		ALIASES_set_version(alias, version);
-	} else {
-		ALIASES_set_version(alias, now);
+		ctx->version = version;
+	} else if (ctx->version <= 0) {
+		ctx->version = now;
 	}
+	ALIASES_set_version(alias, ctx->version);
 	ALIASES_set_ctime(alias, now / G_TIME_SPAN_SECOND);
 	ALIASES_set_mtime(alias, now / G_TIME_SPAN_SECOND);
 	ALIASES_set_deleted(alias, FALSE);
@@ -250,14 +258,20 @@ _m2_generate_alias_header(struct gen_ctx_s *ctx)
 }
 
 struct bean_CHUNKS_s *
-generate_chunk_bean(struct oio_lb_selected_item_s *sel,
-		const struct storage_policy_s *policy UNUSED)
+generate_chunk_bean(struct oio_url_s *url, const gchar *pos,
+		struct oio_lb_selected_item_s *sel,
+		const struct storage_policy_s *policy)
 {
 	guint8 binid[32];
 	gchar *chunkid = NULL, strid[65];
 
-	oio_buf_randomize(binid, sizeof(binid));
-	oio_str_bin2hex(binid, sizeof(binid), strid, sizeof(strid));
+	if (oio_lb_random_chunk_ids) {
+		oio_buf_randomize(binid, sizeof(binid));
+		oio_str_bin2hex(binid, sizeof(binid), strid, sizeof(strid));
+	} else {
+		oio_url_compute_chunk_id(url, pos, storage_policy_get_name(policy),
+				strid, sizeof(strid));
+	}
 
 	if (sel->item->id) {
 		gchar shifted_id[LIMIT_LENGTH_SRVID];
@@ -309,7 +323,8 @@ _gen_chunk(struct gen_ctx_s *ctx, struct oio_lb_selected_item_s *sel,
 	else
 		g_snprintf(strpos, sizeof(strpos), "%u.%d", pos, subpos);
 
-	struct bean_CHUNKS_s *chunk = generate_chunk_bean(sel, ctx->pol);
+	struct bean_CHUNKS_s *chunk = generate_chunk_bean(
+			ctx->url, strpos, sel, ctx->pol);
 	CHUNKS_set2_content(chunk, ctx->uid, ctx->uid_size);
 	CHUNKS_set2_hash(chunk, ctx->h, sizeof(ctx->h));
 	CHUNKS_set_size(chunk, cs);
@@ -332,7 +347,7 @@ _m2_generate_chunks(struct gen_ctx_s *ctx,
 
 	_m2_generate_alias_header(ctx);
 
-	guint pos = 0;
+	guint pos = ctx->pos;
 	gint64 esize = MAX(ctx->size, 1);
 	for (gint64 s = 0; s < esize && !err; s += mcs, ++pos) {
 		int i = 0;
@@ -362,12 +377,12 @@ oio_generate_beans(struct oio_url_s *url, gint64 size, gint64 chunk_size,
 		struct storage_policy_s *pol, struct oio_lb_s *lb,
 		GSList **out)
 {
-	return oio_generate_focused_beans(url, size, chunk_size, pol, lb, 0, 0, out);
+	return oio_generate_focused_beans(url, 0, size, chunk_size, pol, lb, 0, 0, out);
 }
 
 GError *
 oio_generate_focused_beans(
-		struct oio_url_s *url, gint64 size, gint64 chunk_size,
+		struct oio_url_s *url, gint64 pos, gint64 size, gint64 chunk_size,
 		struct storage_policy_s *pol, struct oio_lb_s *lb,
 		oio_location_t pin, int mode,
 		GSList **out)
@@ -399,6 +414,8 @@ oio_generate_focused_beans(
 	ctx.uid_size = uid_size;
 	ctx.size = size;
 	ctx.chunk_size = chunk_size;
+	ctx.pos = pos;
+	ctx.version = 0;  // will be loaded from ctx.url or set to microsecond time
 	ctx.lb = lb;
 	ctx.out = out;
 	ctx.pin = pin;
