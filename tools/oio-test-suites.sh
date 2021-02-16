@@ -199,6 +199,9 @@ func_tests () {
 	if is_running_test_suite "webhook"; then
 		args="${args} -f "${SRCDIR}/etc/bootstrap-option-webhook.yml""
 	fi
+	if is_running_test_suite "predictible-chunk-ids"; then
+		args="${args} -f ${SRCDIR}/etc/bootstrap-option-predictible-chunk-ids.yml"
+	fi
 	$OIO_RESET ${args} -N $OIO_NS $@
 
 	test_proxy_forward
@@ -291,42 +294,6 @@ test_cli () {
 	# This is tested here because we do not need to test it several times,
 	# and for some reason it cannot run with unit tests.
 	test_oio_lb_benchmark
-}
-
-func_tests_rebuilder_mover () {
-	randomize_env
-	args=
-	if is_running_test_suite "with-service-id"; then
-		args="${args} -U"
-	fi
-	if is_running_test_suite "with-random-service-id"; then
-		args="${args} -R"
-	fi
-	if is_running_test_suite "go-rawx"; then
-		args="${args} -f "${SRCDIR}/etc/bootstrap-option-go-rawx.yml""
-	fi
-	$OIO_RESET ${args} -N $OIO_NS $@
-
-	test_proxy_forward
-
-	wait_proxy_cache
-
-	for i in $(seq 1 100); do
-		dd if=/dev/urandom of=/tmp/openio_object_$i bs=1K \
-				count=$(shuf -i 1-2000 -n 1) 2> /dev/null
-		echo "object create container-${RANDOM} /tmp/openio_object_$i" \
-				"--name object-${RANDOM} -f value"
-	done | ${PYTHON} $(command -v openio)
-
-	if [ -n "${REBUILDER}" ]; then
-		${SRCDIR}/tools/oio-test-rebuilder.sh -n "${OIO_NS}"
-	fi
-	if [ -n "${MOVER}" ]; then
-		${SRCDIR}/tools/oio-test-mover.sh -n "${OIO_NS}"
-	fi
-
-	gridinit_cmd -S $HOME/.oio/sds/run/gridinit.sock stop
-	sleep 0.5
 }
 
 #-------------------------------------------------------------------------------
@@ -426,6 +393,9 @@ func_tests_rebuilder_mover () {
 	fi
 	if is_running_test_suite "go-rawx"; then
 		args="${args} -f "${SRCDIR}/etc/bootstrap-option-go-rawx.yml""
+	fi
+	if is_running_test_suite "predictible-chunk-ids"; then
+		args="${args} -f ${SRCDIR}/etc/bootstrap-option-predictible-chunk-ids.yml"
 	fi
 	$OIO_RESET ${args} -N $OIO_NS $@
 
