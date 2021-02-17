@@ -211,6 +211,11 @@ GByteArray* m2v2_remote_pack_PREPARE_SHARDING(
 		struct oio_url_s *url,
 		gint64 dl);
 
+GByteArray* m2v2_remote_pack_UPDATE_SHARD(
+		struct oio_url_s *url,
+		GByteArray *queries,
+		gint64 dl);
+
 GByteArray* m2v2_remote_pack_REPLACE_SHARDING(
 		struct oio_url_s *url,
 		GByteArray *shards,

@@ -116,6 +116,7 @@ M2V2_DECLARE_FILTER(meta2_filter_action_insert_beans);
 M2V2_DECLARE_FILTER(meta2_filter_action_delete_beans);
 M2V2_DECLARE_FILTER(meta2_filter_action_update_beans);
 M2V2_DECLARE_FILTER(meta2_filter_action_prepare_container_sharding);
+M2V2_DECLARE_FILTER(meta2_filter_action_update_shard);
 M2V2_DECLARE_FILTER(meta2_filter_action_replace_container_sharding);
 M2V2_DECLARE_FILTER(meta2_filter_action_show_container_sharding);
 

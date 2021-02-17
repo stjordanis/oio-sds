@@ -21,8 +21,9 @@ from oio.common.client import ProxyClient
 from oio.common.constants import M2_PROP_SHARDING_SHARD_INFO, STRLEN_CID
 from oio.common.easy_value import int_value, is_hexa
 from oio.common.exceptions import OioException
+from oio.common.json import json
 from oio.common.utils import cid_from_name
-from oio.event.beanstalk import Beanstalk
+from oio.event.beanstalk import Beanstalk, ResponseError
 
 
 class ContainerSharding(ProxyClient):
@@ -180,6 +181,25 @@ class ContainerSharding(ProxyClient):
         # Fill the shard info with the CID of the shard container
         shard['cid'] = cid_from_name(shard_account, shard_container)
 
+    def _get_shard(self, shards, path, **kwargs):
+        for shard in shards:
+            if shard['lower'] and path <= shard['lower']:
+                continue
+            if shard['upper'] and path > shard['upper']:
+                continue
+            return shard
+        raise OioException('The path does not belong to any of the shards')
+
+    def _update_shard(self, shard, queries, **kwargs):
+        if not queries:
+            return
+
+        params = self._make_params(cid=shard['cid'], **kwargs)
+        resp, body = self._request('POST', '/update_shard', params=params,
+                                   json=queries, **kwargs)
+        if resp.status != 204:
+            raise exceptions.from_response(resp, body)
+
     def _replace_shards(self, account, root_container, shards, **kwargs):
         params = self._make_params(account, reference=root_container, **kwargs)
         resp, body = self._request('POST', '/replace', params=params,
@@ -227,10 +247,26 @@ class ContainerSharding(ProxyClient):
             sharding_tube = root_cid + '.sharding-' + str(timestamp)
             sharding_beanstalkd.use(sharding_tube)
             sharding_beanstalkd.watch(sharding_tube)
-            # while True:
-            #     job_id, data = sharding_beanstalkd.reserve(timeout=0)
-            #     print(data)
-            #     sharding_beanstalkd.delete(job_id)
+            try:
+                while True:
+                    job_id, data = sharding_beanstalkd.reserve(timeout=0)
+                    if not data:
+                        sharding_beanstalkd.delete(job_id)
+                        continue
+
+                    data = json.loads(data)
+                    path = data['path']
+                    queries = data['queries']
+                    if path is None:
+                        relevant_shards = shards
+                    else:
+                        relevant_shards = [self._get_shard(shards, path)]
+                    for shard in relevant_shards:
+                        self._update_shard(shard, queries)
+                    sharding_beanstalkd.delete(job_id)
+            except ResponseError as exc:
+                if 'TIMED_OUT' not in str(exc):
+                    raise
             sharding_beanstalkd.close()
 
             # TODO(adu) Lock the root container

@@ -2824,6 +2824,61 @@ _meta2_backend_get_shard_info(struct sqlx_sqlite3_s *sq3,
 }
 
 GError*
+meta2_backend_update_shard(struct meta2_backend_s *m2b,
+		struct oio_url_s *url, gchar *queries_str)
+{
+	GError *err = NULL;
+	struct sqlx_sqlite3_s *sq3 = NULL;
+	GList *queries = NULL;
+
+	EXTRA_ASSERT(m2b != NULL);
+	EXTRA_ASSERT(url != NULL);
+
+	struct json_tokener *tok = json_tokener_new();
+	struct json_object *jqueries = json_tokener_parse_ex(tok,
+			queries_str, strlen(queries_str));
+	json_tokener_free(tok);
+	if (!jqueries || !json_object_is_type(jqueries, json_type_array)) {
+		err = BADREQ("Invalid JSON");
+		goto end;
+	}
+	int nb_queries = json_object_array_length(jqueries);
+	for (int i = 0; i < nb_queries; i++) {
+		struct json_object *jquery = json_object_array_get_idx(jqueries, i);
+		queries = g_list_append(queries,
+				g_strdup(json_object_get_string(jquery)));
+	}
+
+	err = m2b_open(m2b, url, M2V2_OPEN_MASTERONLY|M2V2_OPEN_ENABLED, &sq3);
+	if (!err) {
+		gint64 sharding_state = sqlx_admin_get_i64(sq3,
+				M2V2_ADMIN_SHARDING_STATE, 0);
+		if (sharding_state != NEW_SHARD_STATE_APPLYING_SAVED_WRITES) {
+			err = BADREQ("Container is not a new shard");
+			m2b_close(sq3, url);
+			goto end;
+		}
+
+		struct sqlx_repctx_s *repctx = NULL;
+		if (!(err = _transaction_begin(sq3, url, &repctx))) {
+			for (GList *query = queries; query; query = query->next) {
+				err = _db_execute(sq3, query->data, strlen(query->data), NULL);
+				if (err)
+					break;
+			}
+			err = sqlx_transaction_end(repctx, err);
+		}
+
+		m2b_close(sq3, url);
+	}
+
+end:
+	json_object_put(jqueries);
+	g_list_free_full(queries, g_free);
+	return err;
+}
+
+GError*
 meta2_backend_replace_container_sharding(struct meta2_backend_s *m2b,
 		struct oio_url_s *url, gchar *shard_ranges_str)
 {

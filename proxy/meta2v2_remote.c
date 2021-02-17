@@ -501,6 +501,16 @@ m2v2_remote_pack_PREPARE_SHARDING(struct oio_url_s *url, gint64 dl)
 }
 
 GByteArray*
+m2v2_remote_pack_UPDATE_SHARD(struct oio_url_s *url, GByteArray *queries,
+		gint64 dl)
+{
+	MESSAGE msg = _m2v2_build_request(NAME_MSGNAME_M2V2_UPDATE_SHARD,
+			url, NULL, dl);
+	metautils_message_set_BODY(msg, queries->data, queries->len);
+	return message_marshall_gba_and_clean(msg);
+}
+
+GByteArray*
 m2v2_remote_pack_REPLACE_SHARDING(struct oio_url_s *url, GByteArray *shards,
 		gint64 dl)
 {
